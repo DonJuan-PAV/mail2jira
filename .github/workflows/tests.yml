@@ -1,0 +1,20 @@
+# Runs the automated tests on GitHub every time code is pushed.
+# The result shows as a green check (or red cross) next to each commit.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4          # download the code
+      - uses: actions/setup-python@v5      # install Python
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Run tests
+        run: pytest -v

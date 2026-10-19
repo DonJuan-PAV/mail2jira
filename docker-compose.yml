@@ -1,0 +1,8 @@
+services:
+  mail2jira:
+    build: .
+    container_name: mail2jira
+    restart: unless-stopped          # restart after a crash or a server reboot
+    env_file: .env                   # your settings, never inside the image
+    volumes:
+      - ./data:/app/data             # database + saved login survive updates
