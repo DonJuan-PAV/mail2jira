@@ -5,6 +5,7 @@ through the Microsoft Graph API.
 
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 
 import msal
 import requests
@@ -17,6 +18,7 @@ AUTHORITY = "https://login.microsoftonline.com/consumers"  # personal Microsoft 
 SCOPES = ["Mail.Read"]                                     # read-only access to email
 GRAPH_URL = "https://graph.microsoft.com/v1.0"
 MAX_BODY_CHARS = 20000  # cut very long emails so a ticket stays readable
+LOOKBACK_DAYS = 7       # ignore unread emails older than this (old backlog never becomes tickets)
 
 
 class OutlookMailbox:
@@ -69,8 +71,16 @@ class OutlookMailbox:
     # --- Reading ---------------------------------------------------------
 
     def fetch_unread(self, limit: int = 25) -> list[Email]:
-        """Return up to `limit` unread emails from the inbox."""
+        """
+        Return up to `limit` recent unread emails, oldest first.
+
+        Microsoft is asked for the NEWEST unread emails of the last LOOKBACK_DAYS,
+        so a pile of old unread mail can never hide a new request. They are then
+        returned oldest first, so tickets are created in the order emails arrived.
+        """
         token = self.get_token()
+        since = (datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ")
         response = requests.get(
             f"{GRAPH_URL}/me/mailFolders/inbox/messages",
             headers={
@@ -80,7 +90,9 @@ class OutlookMailbox:
                 "Prefer": 'outlook.body-content-type="text", IdType="ImmutableId"',
             },
             params={
-                "$filter": "isRead eq false",
+                # Graph requires the $orderby field to come first in $filter
+                "$filter": f"receivedDateTime ge {since} and isRead eq false",
+                "$orderby": "receivedDateTime desc",
                 "$select": "id,subject,from,receivedDateTime,body",
                 "$top": limit,
             },
@@ -97,4 +109,5 @@ class OutlookMailbox:
                 received=item.get("receivedDateTime", ""),
                 body=((item.get("body") or {}).get("content") or "")[:MAX_BODY_CHARS],
             ))
+        emails.reverse()  # newest-first from Microsoft -> oldest-first for ticket order
         return emails
