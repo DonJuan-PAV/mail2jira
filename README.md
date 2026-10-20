@@ -50,7 +50,7 @@ With `JIRA_DRY_RUN=false`:
 ### 2. Configure
 
 ```bash
-git clone https://github.com/DonJuan-PAV/mail2jira.git
+git clone https://github.com/PAV-JUAN/mail2jira.git
 cd mail2jira
 cp .env.example .env     # then edit .env and paste your CLIENT_ID
 ```
