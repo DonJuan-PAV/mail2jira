@@ -1,6 +1,6 @@
 # mail2jira
 
-![tests](https://github.com/DonJuan-PAV/mail2jira/actions/workflows/tests.yml/badge.svg)
+![tests](https://github.com/PAV-JUAN/mail2jira/actions/workflows/tests.yml/badge.svg)
 
 Watches an Outlook support mailbox 24/7 and turns **real client requests** into Jira tickets, while ignoring the noise: replies, forwards, out-of-office messages, no-reply senders and spam.
 
