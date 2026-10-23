@@ -2,26 +2,26 @@
 
 [![tests](https://github.com/PAV-JUAN/mail2jira/actions/workflows/tests.yml/badge.svg)](https://github.com/PAV-JUAN/mail2jira/actions/workflows/tests.yml)
 
-Watches an Outlook support mailbox and turns real client requests into Jira tickets, while ignoring everything that shouldn't become a ticket: replies, forwards, out-of-office messages, no-reply senders and spam.
+Watches an Outlook support mailbox and turns real client requests into Jira tickets. Replies, forwards, out-of-office messages, no-reply senders and spam are skipped.
 
 ## Why I built this
 
-At my job, a lot of support requests come in by email. To keep track of them, we used to create a Jira ticket for each one by hand. So we built an app instead: it reads the support mailbox, figures out whether each email is an actual request or question, ignores everything else, and creates the Jira ticket with a copy of the email, so the whole team can follow it internally. It ran 24/7 on a virtual machine and checked the mailbox every 10-15 seconds.
+At my job, a lot of support requests come in by email, and we used to create a Jira ticket for each one by hand. So we built an app to do it: it reads the support mailbox, figures out which emails are real requests or questions, and creates a Jira ticket with a copy of the email and everyone who was in CC. It runs 24/7 on a virtual machine and checks the mailbox every 10-15 seconds.
 
-The part that matters most is what it *doesn't* do. If a client replies "RE: thanks!" or an out-of-office message comes back, that's not a new request. Without the filter, the board fills up with tickets nobody needs, and someone has to close them by hand.
+From there, we answer clients through Jira's own email feature, so every message back and forth lands on the same ticket. That's why the filter matters so much. A reply like "RE: thanks!" already belongs to an existing ticket, and an out-of-office message isn't a request at all. If those became new tickets, the board would fill up with duplicates that someone has to close by hand.
 
-mail2jira is my own version, rebuilt from scratch on my own time for an Outlook mailbox, so I can show how it works without sharing anything from work. I've also set up Jira automation rules at work that read incoming tickets for keywords and label them before they're assigned, so this felt like the other half of that: deciding what deserves a ticket in the first place.
+mail2jira is my own version, rebuilt from scratch on my own time for an Outlook mailbox, so I can show how it works without sharing anything from work. It also goes with the Jira automation rules I set up at work, which read incoming tickets for keywords and label them before they're assigned. Those rules sort the tickets; this decides what deserves a ticket in the first place.
 
 ## How it works
 
 Every 15 seconds, mail2jira:
 
-1. Reads the unread emails through the Microsoft Graph API. It signs in with OAuth, so no password is stored anywhere.
+1. Reads unread emails through the Microsoft Graph API. It signs in with OAuth, so no password is stored anywhere.
 2. Runs each email through the filter rules. Noise gets skipped and logged with the reason.
 3. Turns each real request into a Jira ticket.
 4. Saves the email's ID in a small SQLite database, so the same email never creates two tickets, even after a restart.
 
-An email only counts as handled once Jira has actually accepted the ticket. If Jira is down, the email gets tried again on the next check instead of being lost.
+An email only counts as handled once Jira has accepted the ticket. If Jira is down, the email is tried again on the next check instead of being lost.
 
 ```
 Outlook inbox → mail2jira (every 15 s) → filter → real request → Jira ticket
@@ -29,7 +29,9 @@ Outlook inbox → mail2jira (every 15 s) → filter → real request → Jira ti
                   SQLite memory           noise → skipped (logged)
 ```
 
-## Example output
+By default it runs in dry-run mode: it builds every ticket exactly as it would send it, but only logs it. That way anyone can try it on their own mailbox before connecting a Jira site.
+
+## What it looks like running
 
 ```
 2026-10-18 21:31:39 INFO Watching the inbox every 15 s. Jira: DRY RUN (no Jira account needed)
@@ -38,7 +40,7 @@ Outlook inbox → mail2jira (every 15 s) → filter → real request → Jira ti
 2026-10-18 21:31:39 INFO Skipped "Your receipt" -> automated sender (noreply)
 ```
 
-With `JIRA_DRY_RUN=false`:
+Connected to Jira (`JIRA_DRY_RUN=false`):
 
 ```
 2026-10-18 21:31:54 INFO Created Jira ticket SUP-12: "Cannot access VPN" (from client@example.com)
@@ -46,7 +48,7 @@ With `JIRA_DRY_RUN=false`:
 
 ## The filter rules
 
-The clients I support write in English and French, so the rules cover both. They're plain lists at the top of [`src/filters.py`](src/filters.py), so adding a keyword doesn't mean touching the logic.
+Our clients write in English and French, so the rules cover both. They're plain lists at the top of [`src/filters.py`](src/filters.py), so adding a keyword doesn't mean touching the logic.
 
 | Rule | Examples skipped |
 |---|---|
@@ -56,13 +58,7 @@ The clients I support write in English and French, so the rules cover both. They
 | Spam keywords | "you have won", "lottery", "félicitations" |
 | Empty subject | nothing to use as a ticket title |
 
-The French forward prefix `TR:` caused an interesting problem: a simple "starts with TR" check would also skip an email titled "Treasury report", and "RE" would catch "Reset password". So a prefix only counts when it's followed by a colon (with or without a space before it, since French puts one there).
-
-## Things I ran into
-
-**No Jira account.** I don't have a Jira site of my own right now, and I didn't want the project to depend on one. So it runs in dry-run mode by default: it builds every ticket exactly as it would send it, but only logs it. The tests use a fake Jira to check that the real API request is built correctly.
-
-**Azure wouldn't let me register the app.** With a personal Microsoft account, the Azure portal gave me an `AADSTS16000` error when I opened App registrations. A personal account doesn't come with its own Azure directory (tenant). Creating a free Azure account fixed it, because that creates one. The steps are under Troubleshooting below.
+The French forward prefix `TR:` caused an interesting problem. A simple "starts with TR" check would also skip an email titled "Treasury report", and "RE" would catch "Reset password". So a prefix only counts when it's followed by a colon, with or without a space before it, since French puts one there.
 
 ## Setup
 
@@ -73,6 +69,8 @@ The French forward prefix `TR:` caused an interesting problem: a simple "starts 
 3. Copy the **Application (client) ID**.
 4. **Authentication** → **Allow public client flows** → **Yes** → Save. (Needed for the device-code sign-in.)
 5. **API permissions** → **Add a permission** → **Microsoft Graph** → **Delegated** → **Mail.Read** → Add.
+
+If App registrations gives you an `AADSTS16000` error, see Troubleshooting. That one got me too.
 
 ### 2. Configure
 
@@ -100,7 +98,7 @@ python src/main.py --once    # a single check, good for testing
 python src/main.py           # runs until Ctrl+C
 ```
 
-### 4. Send real tickets to Jira
+### 4. Connect it to Jira
 
 Create an [API token](https://id.atlassian.com/manage-profile/security/api-tokens) and set this in `.env`:
 
@@ -121,7 +119,7 @@ pip install -r requirements-dev.txt
 pytest -v
 ```
 
-The tests cover the filter rules, duplicate prevention, retrying after a failed ticket, dry-run mode, settings validation, and the Jira API request (against a fake Jira). They run on every push with GitHub Actions.
+The tests cover the filter rules, duplicate prevention, retrying after a failed ticket, dry-run mode, settings validation, and the Jira API request (against a fake Jira, so the tests don't touch a real site). They run on every push with GitHub Actions.
 
 ## Project structure
 
@@ -138,7 +136,7 @@ tests/             pytest suite
 
 ## Troubleshooting
 
-**`AADSTS16000: User account ... does not exist in tenant 'Microsoft Services'`** when opening App registrations. Your personal Microsoft account has no Azure directory of its own. Create a free Azure account at [azure.microsoft.com/free](https://azure.microsoft.com/free) (in a private window) and App registrations will work.
+**`AADSTS16000: User account ... does not exist in tenant 'Microsoft Services'`** when opening App registrations. A personal Microsoft account doesn't come with its own Azure directory (tenant). Create a free Azure account at [azure.microsoft.com/free](https://azure.microsoft.com/free) (in a private window). That creates a tenant, and App registrations will work.
 
 **`Sign-in failed`** on the first run. Check that *Allow public client flows* is set to **Yes** on the app's Authentication page, and that `CLIENT_ID` in `.env` matches the Application (client) ID.
 
@@ -148,5 +146,4 @@ tests/             pytest suite
 
 ## What's next
 
-- Add replies (`RE:`) as comments on the existing ticket instead of skipping them. That's closer to how a real help desk works.
-- Test it end to end against a real Jira Cloud site.
+- An option for teams that don't reply through Jira's email feature: add `RE:` replies as comments on the existing ticket instead of skipping them.
