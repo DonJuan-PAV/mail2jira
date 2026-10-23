@@ -146,4 +146,4 @@ tests/             pytest suite
 
 ## What's next
 
-- An option for teams that don't reply through Jira's email feature: add `RE:` replies as comments on the existing ticket instead of skipping them.
+- tba
